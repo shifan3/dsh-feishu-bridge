@@ -73,9 +73,9 @@ cp config.example.json config.json
 | 命令 | 作用 |
 |---|---|
 | `/help` | 显示命令帮助 |
-| `/new` | 新建会话 |
+| `/new` | 新建会话（重置） |
 | `/reset` | 重置当前会话 |
-| `/cd <路径>` | 切换 workspace（相对 / `~` / `/` 绝对路径） |
+| `/cd <路径>` | 切换 workspace（相对 / `~` / `/` 绝对路径），**会重置会话** |
 | `/status` | 当前状态 |
 | `/context` | 当前上下文占用 |
 | `/usage` | 本会话 API 用量（tokens） |
@@ -83,8 +83,11 @@ cp config.example.json config.json
 | `/models` | 列出可用模型 |
 | `/model [模型]` | 查看 / 切换模型 |
 | `/effort [强度]` | 查看 / 切换思考强度 |
-| `/mode [模式]` | 查看 / 切换模式（preset） |
+| `/mode [模式]` | 查看 / 切换模式（preset），**会重置会话** |
 | `/modes` | 列出可用模式 |
+
+> ⚠️ **会自动重置会话（新建会话、清空历史与上下文）的命令**：`/new`、`/reset`、`/cd`、`/mode`。
+> `/model`、`/effort` 只切换模型 / 强度，**不会**重置会话。
 
 处理普通消息时，机器人会先在消息上显示 typing 表情，处理完成后移除。
 
