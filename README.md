@@ -75,6 +75,8 @@ cp config.example.json config.json
 | `/help` | 显示命令帮助 |
 | `/new` | 新建会话（重置） |
 | `/reset` | 重置当前会话 |
+| `/sessions` | 列出会话（`*` 为当前） |
+| `/session <名称>` | 切换 / 新建会话 |
 | `/cd <路径>` | 切换 workspace（相对 / `~` / `/` 绝对路径），**会重置会话** |
 | `/status` | 当前状态 |
 | `/context` | 当前上下文占用 |
@@ -89,9 +91,10 @@ cp config.example.json config.json
 | `/permissions` | 列出 permission（`*` 为当前） |
 | `/permission <名称>` | 切换 permission |
 
-> ⚠️ **会自动重置会话（新建会话、清空历史与上下文）的命令**：`/new`、`/reset`、`/cd`、`/mode`。
+> ⚠️ **会新建会话（清空历史与上下文）的命令**：`/new`、`/reset`、`/cd`、`/mode`。
+> `/session <名称>` 会切换到**已有会话**（保留其历史）；只有名称不存在时才新建。
 > `/model`、`/effort`、`/permission` 只切换对应设置，**不会**重置会话。
-> 列表类命令（`/models`、`/efforts`、`/modes`、`/permissions`）会用 `*` 标记当前项；切换类命令（`/model`、`/effort`、`/mode`、`/permission`）**必须带参数**。
+> 列表类命令（`/sessions`、`/models`、`/efforts`、`/modes`、`/permissions`）会用 `*` 标记当前项；切换类命令（`/session`、`/model`、`/effort`、`/mode`、`/permission`）**必须带参数**。
 
 处理普通消息时，机器人会先在消息上显示 typing 表情，处理完成后移除。
 

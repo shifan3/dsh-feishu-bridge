@@ -51,6 +51,7 @@ export async function apply(ctx, config) {
     reasoningEffort: undefined,
     presetId: (conf && conf.presetId) || undefined,
     cwd: configCwd,
+    sessionName: 'main',
   };
   if (agentDefaultModel) {
     try {
@@ -151,47 +152,68 @@ export async function apply(ctx, config) {
     if (helperProc) { try { helperProc.kill(); } catch (e) {} helperProc = null; }
   });
 
-  function createFeishuAgent() {
+  function makeSetup() {
+    return async (agentCtx) => {
+      if (agentPresets) {
+        const preset = await agentPresets.mount(agentCtx, runtime.presetId);
+        log('已挂载 preset:', preset && preset.id);
+      }
+      if (runtime.provider && runtime.model) {
+        agentCtx.on('agent/request', async (payload, next) => {
+          const resolved = await next();
+          const out = {};
+          for (const k in resolved) { if (k !== 'reasoningEffort') out[k] = resolved[k]; }
+          out.provider = runtime.provider;
+          out.model = runtime.model;
+          if (runtime.reasoningEffort !== undefined && runtime.reasoningEffort !== null && runtime.reasoningEffort !== '') {
+            out.reasoningEffort = runtime.reasoningEffort;
+          }
+          return out;
+        });
+      }
+    };
+  }
+
+  function activateSession(name, forceNew) {
+    const sessionId = 'feishu-' + name;
     const oldDispose = disposeAgent;
     return (async () => {
       try {
-        const handle = await agents.create({
-          sessionId: 'feishu-' + Date.now() + '-' + (++sessionCounter),
-          agentOptions: (runtime.provider && runtime.model) ? { provider: runtime.provider, model: runtime.model } : {},
-          meta: runtime.cwd ? { cwd: runtime.cwd } : {},
-          setup: async (agentCtx) => {
-            if (agentPresets) {
-              const preset = await agentPresets.mount(agentCtx, runtime.presetId);
-              log('已挂载 preset:', preset && preset.id);
-            }
-            if (runtime.provider && runtime.model) {
-              agentCtx.on('agent/request', async (payload, next) => {
-                const resolved = await next();
-                const out = {};
-                for (const k in resolved) { if (k !== 'reasoningEffort') out[k] = resolved[k]; }
-                out.provider = runtime.provider;
-                out.model = runtime.model;
-                if (runtime.reasoningEffort !== undefined && runtime.reasoningEffort !== null && runtime.reasoningEffort !== '') {
-                  out.reasoningEffort = runtime.reasoningEffort;
-                }
-                return out;
-              });
-            }
-          },
-        });
+        const agentOptions = (runtime.provider && runtime.model) ? { provider: runtime.provider, model: runtime.model } : {};
+        const setup = makeSetup();
+        const sp = ctx.get('sessionPersistence');
+        let handle;
+        if (!forceNew && sp) {
+          let exists = false;
+          try { exists = (await sp.list()).some((h) => h && h.id === sessionId); } catch (e) { exists = false; }
+          if (exists) {
+            handle = await agents.resume({ resumeSessionId: sessionId, agentOptions, setup });
+            log('已恢复会话:', sessionId);
+          } else {
+            handle = await agents.create({ sessionId, agentOptions, meta: runtime.cwd ? { cwd: runtime.cwd } : {}, setup });
+            log('已新建会话:', sessionId);
+          }
+        } else {
+          handle = await agents.create({ sessionId, agentOptions, meta: runtime.cwd ? { cwd: runtime.cwd } : {}, setup });
+          log('已新建会话(force):', sessionId);
+        }
         feishuAgent = handle.agent;
         disposeAgent = () => handle.dispose();
-        log('飞书 Agent 就绪:', feishuAgent.id, '| mode=', runtime.presetId || '默认', '| model=', runtime.provider + '/' + runtime.model, '| cwd=', runtime.cwd || '(none)');
+        runtime.sessionName = name;
+        if (feishuAgent && feishuAgent.session && feishuAgent.session.header && feishuAgent.session.header.cwd) {
+          runtime.cwd = feishuAgent.session.header.cwd;
+        }
+        log('飞书 Agent 就绪:', feishuAgent.id, '| session=', name, '| mode=', runtime.presetId || '默认', '| model=', runtime.provider + '/' + runtime.model, '| cwd=', runtime.cwd || '(none)');
         if (oldDispose) { try { oldDispose(); } catch (e) {} }
         return true;
       } catch (e) {
-        log('创建飞书 Agent 失败:', e && (e.message || String(e)));
+        log('激活会话失败:', e && (e.message || String(e)));
         return false;
       }
     })();
   }
 
-  createFeishuAgent();
+  activateSession(runtime.sessionName, false);
 
   // ---- 启动飞书长连接助手 ----
   if (hasCreds) {
@@ -271,6 +293,8 @@ export async function apply(ctx, config) {
   const HELP = [
     '/new 新建会话',
     '/reset 重置当前会话',
+    '/sessions 列出会话',
+    '/session <名称> 切换会话',
     '/cd <路径> 切换 workspace',
     '/status 当前状态',
     '/context 当前上下文占用',
@@ -398,7 +422,7 @@ export async function apply(ctx, config) {
     if (matches.length === 0) return '未找到模式：“' + arg + '”，用 /modes 查看';
     if (matches.length > 1) return '匹配到多个：' + matches.map((p) => p.id + (p.name ? '(' + p.name + ')' : '')).join('、');
     runtime.presetId = matches[0].id;
-    const ok = await createFeishuAgent();
+    const ok = await activateSession('s' + Date.now(), true);
     return ok ? '已切换模式：' + matches[0].id + (matches[0].name ? '（' + matches[0].name + '）' : '') + '，已新建会话' : '切换模式失败，请查看日志';
   }
 
@@ -437,6 +461,23 @@ export async function apply(ctx, config) {
     if (matches.length > 1) return '匹配到多个：' + matches.join('、');
     pp.set(feishuAgent.session, matches[0]);
     return '已切换 permission：' + matches[0];
+  }
+
+  async function listSessions() {
+    const sp = ctx.get('sessionPersistence');
+    if (!sp) return 'session 服务不可用';
+    let headers;
+    try { headers = await sp.list(); } catch (e) { return '列出会话失败: ' + (e && e.message); }
+    const feishu = headers.filter((h) => h && h.id && h.id.indexOf('feishu-') === 0);
+    if (!feishu.length) return '（暂无会话）';
+    const cur = runtime.sessionName;
+    const lines = feishu.map((h) => {
+      const name = h.id.slice('feishu-'.length);
+      const star = (name === cur) ? '* ' : '';
+      const cwd = h.cwd ? '  (' + h.cwd + ')' : '';
+      return star + name + cwd;
+    });
+    return '可用会话（* 为当前）：\n' + lines.join('\n');
   }
 
   async function contextSummary() {
@@ -491,7 +532,7 @@ export async function apply(ctx, config) {
       '模式: ' + (runtime.presetId || '默认') + '\n' +
       '工作目录: ' + (runtime.cwd || '-') + '\n' +
       '长连接: ' + helper + '\n' +
-      '会话: ' + (feishuAgent ? feishuAgent.id : '-') + '\n' +
+      '会话: ' + (runtime.sessionName || '-') + '\n' +
       '已处理消息: ' + msgCounter;
   }
 
@@ -500,15 +541,24 @@ export async function apply(ctx, config) {
       case 'help': return '可用命令：\n' + HELP;
       case 'new':
       case 'reset': {
-        const ok = await createFeishuAgent();
-        return ok ? '已' + (cmd === 'new' ? '新建' : '重置') + '会话' : '操作失败，请查看日志';
+        const name = 's' + Date.now();
+        const ok = await activateSession(name, true);
+        return ok ? '已' + (cmd === 'new' ? '新建' : '重置') + '会话：' + name : '操作失败，请查看日志';
+      }
+      case 'sessions': return await listSessions();
+      case 'session': {
+        if (!arg) return '用法：/session <名称>（用 /sessions 查看列表）';
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(arg)) return '会话名只能包含小写字母、数字、连字符';
+        const ok = await activateSession(arg, false);
+        return ok ? '已切换到会话：' + arg : '切换失败，请查看日志';
       }
       case 'cd': {
         const r = await resolveCdTarget(arg);
         if (r.error) return r.error;
         runtime.cwd = r.abs;
-        const ok = await createFeishuAgent();
-        return ok ? '已切换 workspace: ' + r.abs + '（已新建会话）' : '切换失败，请查看日志';
+        const name = 's' + Date.now();
+        const ok = await activateSession(name, true);
+        return ok ? '已切换 workspace: ' + r.abs + '（会话 ' + name + '）' : '切换失败，请查看日志';
       }
       case 'status': return statusSummary();
       case 'context': return await contextSummary();
