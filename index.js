@@ -23,7 +23,6 @@ export async function apply(ctx, config) {
   const skills = ctx.get('skills');
   const tokenMeter = ctx.get('tokenMeter');
   const agentDefaultModel = ctx.get('agentDefaultModel');
-  const permissionPresets = ctx.get('permissionPresets');
 
   // ---- 读取配置 ----
   let conf = null;
@@ -329,9 +328,9 @@ export async function apply(ctx, config) {
       try { models = await llm.listModels(p.id); } catch (e) { continue; }
       for (const m of models) {
         const key = p.id + '/' + m.id;
-        const star = (key === curKey) ? ' *' : '';
+        const star = (key === curKey) ? '* ' : '';
         const nm = (m.name && m.name !== m.id) ? ' - ' + m.name : '';
-        lines.push(m.id + '  [' + (p.name || p.id) + ']' + nm + star);
+        lines.push(star + m.id + '  [' + (p.name || p.id) + ']' + nm);
       }
     }
     return lines.length ? '可用模型（* 为当前）：\n' + lines.join('\n') : '（未找到模型）';
@@ -384,7 +383,7 @@ export async function apply(ctx, config) {
     const efforts = await getEfforts();
     if (!efforts || efforts.length === 0) return '当前模型不支持思考强度设置';
     const cur = runtime.reasoningEffort;
-    return '可用思考强度（* 为当前）：\n' + efforts.map((e) => e.id + (e.name ? '(' + e.name + ')' : '') + (e.id === cur ? ' *' : '')).join('、');
+    return '可用思考强度（* 为当前）：\n' + efforts.map((e) => (e.id === cur ? '* ' : '') + e.id + (e.name ? '(' + e.name + ')' : '')).join('、');
   }
 
   async function listPresets() {
@@ -409,32 +408,34 @@ export async function apply(ctx, config) {
   }
 
   function listPermissions() {
-    if (!permissionPresets) return 'permission 服务不可用';
-    const names = permissionPresets.names || [];
+    const pp = ctx.get('permissionPresets');
+    if (!pp) return 'permission 服务不可用';
+    const names = pp.names || [];
     if (!names.length) return '（未找到可用 permission）';
-    const current = feishuAgent ? permissionPresets.current(feishuAgent.session.events) : null;
+    const current = feishuAgent ? pp.current(feishuAgent.session.events) : null;
     const lines = names.map((n) => {
-      const opt = permissionPresets.optionOf(n);
-      const star = (n === current) ? ' *' : '';
+      const opt = pp.optionOf(n);
+      const star = (n === current) ? '* ' : '';
       const nm = (opt && opt.name && opt.name !== n) ? '（' + opt.name + '）' : '';
       const desc = (opt && opt.description) ? ' - ' + opt.description : '';
-      return n + nm + star + desc;
+      return star + n + nm + desc;
     });
     return '可用 permission（* 为当前）：\n' + lines.join('\n');
   }
 
   function selectPermission(arg) {
-    if (!permissionPresets) return 'permission 服务不可用';
+    const pp = ctx.get('permissionPresets');
+    if (!pp) return 'permission 服务不可用';
     if (!feishuAgent) return '会话未就绪';
-    const names = permissionPresets.names || [];
+    const names = pp.names || [];
     const a = arg.toLowerCase();
     const matches = names.filter((n) => {
-      const opt = permissionPresets.optionOf(n);
+      const opt = pp.optionOf(n);
       return n.toLowerCase() === a || n.toLowerCase().includes(a) || ((opt && opt.name || '').toLowerCase().includes(a));
     });
     if (matches.length === 0) return '未找到 permission：“' + arg + '”，用 /permissions 查看';
     if (matches.length > 1) return '匹配到多个：' + matches.join('、');
-    permissionPresets.set(feishuAgent.session, matches[0]);
+    pp.set(feishuAgent.session, matches[0]);
     return '已切换 permission：' + matches[0];
   }
 
@@ -534,7 +535,7 @@ export async function apply(ctx, config) {
         const presets = await listPresets();
         if (!presets.length) return '（未找到可用模式）';
         const cur = currentPresetId();
-        return '可用模式（* 为当前）：\n' + presets.map((p) => p.id + (p.name ? '（' + p.name + '）' : '') + (p.id === cur ? ' *' : '') + (p.description ? ' - ' + p.description : '')).join('\n');
+        return '可用模式（* 为当前）：\n' + presets.map((p) => (p.id === cur ? '* ' : '') + p.id + (p.name ? '（' + p.name + '）' : '') + (p.description ? ' - ' + p.description : '')).join('\n');
       }
       case 'mode': {
         if (!arg) return '用法：/mode <模式>（用 /modes 查看列表）';
