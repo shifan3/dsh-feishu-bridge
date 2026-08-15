@@ -1,0 +1,25 @@
+{
+  "name": "dsh-feishu-bridge",
+  "version": "1.0.0",
+  "description": "Feishu/Lark bridge plugin for the DeepSeek Harness (DSH): receive messages over WebSocket long-connection, run a dedicated agent to execute commands, and reply back to Feishu.",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "helper.mjs",
+    "config.example.json",
+    "README.md"
+  ],
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.73.0"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "feishu",
+    "lark",
+    "bot",
+    "cordis"
+  ],
+  "license": "MIT"
+}

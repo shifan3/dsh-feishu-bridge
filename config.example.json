@@ -1,0 +1,8 @@
+{
+  "appId": "",
+  "appSecret": "",
+  "presetId": null,
+  "cwd": "/path/to/your/workspace",
+  "groupReplyOnlyWhenMentioned": true,
+  "maxReplyChars": 4000
+}
