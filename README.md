@@ -101,7 +101,6 @@ cp config.example.json config.json
 
 ## 安全说明
 
-- 真实 App ID / Secret **不会**进入仓库：`config.json` 与 `.env` 已在 `.gitignore` 中，仓库只含 `config.example.json` 模板。
 - 切换 workspace（`/cd`）会把该 Agent 的文件沙箱边界切换到新目录；`/cd` 到某目录即代表授权它在该目录下读写。
 
 ## License
