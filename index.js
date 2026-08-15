@@ -422,7 +422,7 @@ export async function apply(ctx, config) {
     if (matches.length === 0) return '未找到模式：“' + arg + '”，用 /modes 查看';
     if (matches.length > 1) return '匹配到多个：' + matches.map((p) => p.id + (p.name ? '(' + p.name + ')' : '')).join('、');
     runtime.presetId = matches[0].id;
-    const ok = await activateSession('s' + Date.now(), true);
+    const ok = await activateSession('@' + Date.now(), true);
     return ok ? '已切换模式：' + matches[0].id + (matches[0].name ? '（' + matches[0].name + '）' : '') + '，已新建会话' : '切换模式失败，请查看日志';
   }
 
@@ -484,7 +484,13 @@ export async function apply(ctx, config) {
       } catch (e) {}
     }
     const cur = runtime.sessionName;
-    const lines = feishu.map((h) => {
+    // 只列出有效会话：命名会话（字母开头）、当前会话、或有自动标题的会话；空的时间戳会话不列出
+    const valid = feishu.filter((h) => {
+      const name = h.id.slice('feishu-'.length);
+      return /^[a-z]/.test(name) || name === cur || !!titles[h.id];
+    });
+    if (!valid.length) return '（暂无有效会话）';
+    const lines = valid.map((h) => {
       const name = h.id.slice('feishu-'.length);
       const star = (name === cur) ? '* ' : '';
       const title = titles[h.id] ? ' - ' + titles[h.id] : '';
@@ -555,7 +561,7 @@ export async function apply(ctx, config) {
       case 'help': return '可用命令：\n' + HELP;
       case 'new':
       case 'reset': {
-        const name = 's' + Date.now();
+        const name = '@' + Date.now();
         const ok = await activateSession(name, true);
         return ok ? '已' + (cmd === 'new' ? '新建' : '重置') + '会话：' + name : '操作失败，请查看日志';
       }
@@ -570,7 +576,7 @@ export async function apply(ctx, config) {
         const r = await resolveCdTarget(arg);
         if (r.error) return r.error;
         runtime.cwd = r.abs;
-        const name = 's' + Date.now();
+        const name = '@' + Date.now();
         const ok = await activateSession(name, true);
         return ok ? '已切换 workspace: ' + r.abs + '（会话 ' + name + '）' : '切换失败，请查看日志';
       }
