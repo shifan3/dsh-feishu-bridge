@@ -23,6 +23,7 @@ export async function apply(ctx, config) {
   const skills = ctx.get('skills');
   const tokenMeter = ctx.get('tokenMeter');
   const agentDefaultModel = ctx.get('agentDefaultModel');
+  const permissionPresets = ctx.get('permissionPresets');
 
   // ---- 读取配置 ----
   let conf = null;
@@ -277,10 +278,13 @@ export async function apply(ctx, config) {
     '/usage API 用量（付费）',
     '/skills 列出所有 skill',
     '/models 列出可用模型',
-    '/model [模型] 查看/切换模型',
-    '/effort [强度] 查看/切换思考强度',
-    '/mode [模式] 查看/切换模式',
+    '/model <模型> 切换模型',
+    '/efforts 列出思考强度',
+    '/effort <强度> 切换思考强度',
     '/modes 列出可用模式',
+    '/mode <模式> 切换模式',
+    '/permissions 列出 permission',
+    '/permission <名称> 切换 permission',
   ].join('\n');
 
   async function getHome() {
@@ -319,15 +323,18 @@ export async function apply(ctx, config) {
     if (!llm) return 'llm 服务不可用';
     const lines = [];
     const providers = llm.listProviders();
+    const curKey = runtime.provider + '/' + runtime.model;
     for (const p of providers) {
       let models;
       try { models = await llm.listModels(p.id); } catch (e) { continue; }
       for (const m of models) {
+        const key = p.id + '/' + m.id;
+        const star = (key === curKey) ? ' *' : '';
         const nm = (m.name && m.name !== m.id) ? ' - ' + m.name : '';
-        lines.push(m.id + '  [' + (p.name || p.id) + ']' + nm);
+        lines.push(m.id + '  [' + (p.name || p.id) + ']' + nm + star);
       }
     }
-    return lines.length ? '可用模型：\n' + lines.join('\n') : '（未找到模型）';
+    return lines.length ? '可用模型（* 为当前）：\n' + lines.join('\n') : '（未找到模型）';
   }
 
   async function selectModel(arg) {
@@ -354,7 +361,7 @@ export async function apply(ctx, config) {
     return '已切换模型：' + uniq[0].provider + '/' + uniq[0].model + '（下一条消息生效）';
   }
 
-  async function listEfforts() {
+  async function getEfforts() {
     if (!llm || !runtime.provider || !runtime.model) return null;
     try {
       const info = await llm.resolveModelInfo(runtime.provider, runtime.model);
@@ -363,7 +370,7 @@ export async function apply(ctx, config) {
   }
 
   async function selectEffort(arg) {
-    const efforts = await listEfforts();
+    const efforts = await getEfforts();
     if (!efforts || efforts.length === 0) return '当前模型不支持思考强度设置';
     const a = arg.toLowerCase();
     const matches = efforts.filter((e) => (e.id || '').toLowerCase() === a || (e.id || '').toLowerCase().includes(a) || ((e.name || '').toLowerCase().includes(a)));
@@ -371,6 +378,13 @@ export async function apply(ctx, config) {
     if (matches.length > 1) return '匹配到多个：' + matches.map((e) => e.id).join('、');
     runtime.reasoningEffort = matches[0].id;
     return '已设置思考强度：' + matches[0].id + (matches[0].name ? '（' + matches[0].name + '）' : '');
+  }
+
+  async function listEffortsCmd() {
+    const efforts = await getEfforts();
+    if (!efforts || efforts.length === 0) return '当前模型不支持思考强度设置';
+    const cur = runtime.reasoningEffort;
+    return '可用思考强度（* 为当前）：\n' + efforts.map((e) => e.id + (e.name ? '(' + e.name + ')' : '') + (e.id === cur ? ' *' : '')).join('、');
   }
 
   async function listPresets() {
@@ -387,6 +401,41 @@ export async function apply(ctx, config) {
     runtime.presetId = matches[0].id;
     const ok = await createFeishuAgent();
     return ok ? '已切换模式：' + matches[0].id + (matches[0].name ? '（' + matches[0].name + '）' : '') + '，已新建会话' : '切换模式失败，请查看日志';
+  }
+
+  function currentPresetId() {
+    if (runtime.presetId) return runtime.presetId;
+    try { return (agentPresets && agentPresets.defaultId) || undefined; } catch (e) { return undefined; }
+  }
+
+  function listPermissions() {
+    if (!permissionPresets) return 'permission 服务不可用';
+    const names = permissionPresets.names || [];
+    if (!names.length) return '（未找到可用 permission）';
+    const current = feishuAgent ? permissionPresets.current(feishuAgent.session.events) : null;
+    const lines = names.map((n) => {
+      const opt = permissionPresets.optionOf(n);
+      const star = (n === current) ? ' *' : '';
+      const nm = (opt && opt.name && opt.name !== n) ? '（' + opt.name + '）' : '';
+      const desc = (opt && opt.description) ? ' - ' + opt.description : '';
+      return n + nm + star + desc;
+    });
+    return '可用 permission（* 为当前）：\n' + lines.join('\n');
+  }
+
+  function selectPermission(arg) {
+    if (!permissionPresets) return 'permission 服务不可用';
+    if (!feishuAgent) return '会话未就绪';
+    const names = permissionPresets.names || [];
+    const a = arg.toLowerCase();
+    const matches = names.filter((n) => {
+      const opt = permissionPresets.optionOf(n);
+      return n.toLowerCase() === a || n.toLowerCase().includes(a) || ((opt && opt.name || '').toLowerCase().includes(a));
+    });
+    if (matches.length === 0) return '未找到 permission：“' + arg + '”，用 /permissions 查看';
+    if (matches.length > 1) return '匹配到多个：' + matches.join('、');
+    permissionPresets.set(feishuAgent.session, matches[0]);
+    return '已切换 permission：' + matches[0];
   }
 
   async function contextSummary() {
@@ -473,21 +522,28 @@ export async function apply(ctx, config) {
       }
       case 'models': return await listModels();
       case 'model': {
-        if (!arg) return '当前模型: ' + (runtime.provider ? runtime.provider + '/' + runtime.model : '未设置') + '\n思考强度: ' + (runtime.reasoningEffort || '默认');
+        if (!arg) return '用法：/model <模型>（用 /models 查看列表）';
         return await selectModel(arg);
       }
+      case 'efforts': return await listEffortsCmd();
       case 'effort': {
-        if (!arg) return '当前思考强度: ' + (runtime.reasoningEffort || '默认');
+        if (!arg) return '用法：/effort <强度>（用 /efforts 查看列表）';
         return await selectEffort(arg);
-      }
-      case 'mode': {
-        if (!arg) return '当前模式: ' + (runtime.presetId || '默认');
-        return await selectMode(arg);
       }
       case 'modes': {
         const presets = await listPresets();
         if (!presets.length) return '（未找到可用模式）';
-        return '可用模式：\n' + presets.map((p) => p.id + (p.name ? '（' + p.name + '）' : '') + (p.description ? ' - ' + p.description : '')).join('\n');
+        const cur = currentPresetId();
+        return '可用模式（* 为当前）：\n' + presets.map((p) => p.id + (p.name ? '（' + p.name + '）' : '') + (p.id === cur ? ' *' : '') + (p.description ? ' - ' + p.description : '')).join('\n');
+      }
+      case 'mode': {
+        if (!arg) return '用法：/mode <模式>（用 /modes 查看列表）';
+        return await selectMode(arg);
+      }
+      case 'permissions': return listPermissions();
+      case 'permission': {
+        if (!arg) return '用法：/permission <名称>（用 /permissions 查看列表）';
+        return selectPermission(arg);
       }
       default:
         return '未知命令: /' + cmd + '\n' + HELP;

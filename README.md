@@ -80,14 +80,18 @@ cp config.example.json config.json
 | `/context` | 当前上下文占用 |
 | `/usage` | 本会话 API 用量（tokens） |
 | `/skills` | 列出所有 skill |
-| `/models` | 列出可用模型 |
-| `/model [模型]` | 查看 / 切换模型 |
-| `/effort [强度]` | 查看 / 切换思考强度 |
-| `/mode [模式]` | 查看 / 切换模式（preset），**会重置会话** |
-| `/modes` | 列出可用模式 |
+| `/models` | 列出可用模型（`*` 为当前） |
+| `/model <模型>` | 切换模型 |
+| `/efforts` | 列出思考强度（`*` 为当前） |
+| `/effort <强度>` | 切换思考强度 |
+| `/modes` | 列出可用模式（`*` 为当前） |
+| `/mode <模式>` | 切换模式（preset），**会重置会话** |
+| `/permissions` | 列出 permission（`*` 为当前） |
+| `/permission <名称>` | 切换 permission |
 
 > ⚠️ **会自动重置会话（新建会话、清空历史与上下文）的命令**：`/new`、`/reset`、`/cd`、`/mode`。
-> `/model`、`/effort` 只切换模型 / 强度，**不会**重置会话。
+> `/model`、`/effort`、`/permission` 只切换对应设置，**不会**重置会话。
+> 列表类命令（`/models`、`/efforts`、`/modes`、`/permissions`）会用 `*` 标记当前项；切换类命令（`/model`、`/effort`、`/mode`、`/permission`）**必须带参数**。
 
 处理普通消息时，机器人会先在消息上显示 typing 表情，处理完成后移除。
 
