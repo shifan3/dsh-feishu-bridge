@@ -470,12 +470,26 @@ export async function apply(ctx, config) {
     try { headers = await sp.list(); } catch (e) { return '列出会话失败: ' + (e && e.message); }
     const feishu = headers.filter((h) => h && h.id && h.id.indexOf('feishu-') === 0);
     if (!feishu.length) return '（暂无会话）';
+    // 取自动生成的标题（同网页端）
+    const titles = {};
+    const sq = ctx.get('sessionQuery');
+    if (sq) {
+      try {
+        const results = await sq.readTitleSnapshots(feishu.map((h) => h.id));
+        for (const r of results) {
+          if (r && r.status === 'fulfilled' && r.value && r.value.title && r.value.title.title) {
+            titles[r.sessionId] = r.value.title.title;
+          }
+        }
+      } catch (e) {}
+    }
     const cur = runtime.sessionName;
     const lines = feishu.map((h) => {
       const name = h.id.slice('feishu-'.length);
       const star = (name === cur) ? '* ' : '';
+      const title = titles[h.id] ? ' - ' + titles[h.id] : '';
       const cwd = h.cwd ? '  (' + h.cwd + ')' : '';
-      return star + name + cwd;
+      return star + name + title + cwd;
     });
     return '可用会话（* 为当前）：\n' + lines.join('\n');
   }
