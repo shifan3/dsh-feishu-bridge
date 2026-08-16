@@ -468,7 +468,13 @@ export async function apply(ctx, config) {
     if (!sp) return 'session 服务不可用';
     let headers;
     try { headers = await sp.list(); } catch (e) { return '列出会话失败: ' + (e && e.message); }
-    const feishu = headers.filter((h) => h && h.id && h.id.indexOf('feishu-') === 0 && (runtime.cwd ? h.cwd === runtime.cwd : !h.cwd));
+    // 已归档会话不列出
+    const archivedSet = new Set();
+    const wr = ctx.get('workspaceRegistry');
+    if (wr && wr.archivedSessionIds) {
+      try { for (const id of wr.archivedSessionIds) archivedSet.add(id); } catch (e) {}
+    }
+    const feishu = headers.filter((h) => h && h.id && h.id.indexOf('feishu-') === 0 && !archivedSet.has(h.id) && (runtime.cwd ? h.cwd === runtime.cwd : !h.cwd));
     if (!feishu.length) return '（暂无会话）';
     // 取自动生成的标题（同网页端）
     const titles = {};
