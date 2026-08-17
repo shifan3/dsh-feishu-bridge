@@ -474,7 +474,7 @@ export async function apply(ctx, config) {
     if (wr && wr.archivedSessionIds) {
       try { for (const id of wr.archivedSessionIds) archivedSet.add(id); } catch (e) {}
     }
-    const feishu = headers.filter((h) => h && h.id && h.id.indexOf('feishu-') === 0 && !archivedSet.has(h.id) && (runtime.cwd ? h.cwd === runtime.cwd : !h.cwd));
+    const feishu = headers.filter((h) => h && h.id && h.id.indexOf('feishu-') === 0 && !archivedSet.has(h.id));
     if (!feishu.length) return '（暂无会话）';
     // 取自动生成的标题（同网页端）
     const titles = {};
