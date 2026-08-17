@@ -509,7 +509,7 @@ export async function apply(ctx, config) {
       const title = titles[h.id];
       const cwd = h.cwd ? '  (' + h.cwd + ')' : '';
       const label = isFeishu ? (name + (title ? ' - ' + title : '')) : (title || name);
-      return star + label + cwd;
+      return star + label + '  [id: ' + h.id + ']' + cwd;
     });
     return '可用会话（* 为当前）：\n' + lines.join('\n');
   }
