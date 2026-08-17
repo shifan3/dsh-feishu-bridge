@@ -474,14 +474,15 @@ export async function apply(ctx, config) {
     if (wr && wr.archivedSessionIds) {
       try { for (const id of wr.archivedSessionIds) archivedSet.add(id); } catch (e) {}
     }
-    const feishu = headers.filter((h) => h && h.id && h.id.indexOf('feishu-') === 0 && !archivedSet.has(h.id));
-    if (!feishu.length) return '（暂无会话）';
+    // 排除已归档与子代理会话
+    const all = headers.filter((h) => h && h.id && !archivedSet.has(h.id) && h.origin !== 'subagent');
+    if (!all.length) return '（暂无会话）';
     // 取自动生成的标题（同网页端）
     const titles = {};
     const sq = ctx.get('sessionQuery');
     if (sq) {
       try {
-        const results = await sq.readTitleSnapshots(feishu.map((h) => h.id));
+        const results = await sq.readTitleSnapshots(all.map((h) => h.id));
         for (const r of results) {
           if (r && r.status === 'fulfilled' && r.value && r.value.title && r.value.title.title) {
             titles[r.sessionId] = r.value.title.title;
@@ -490,18 +491,23 @@ export async function apply(ctx, config) {
       } catch (e) {}
     }
     const cur = runtime.sessionName;
-    // 只列出有效会话：命名会话（字母开头）、当前会话、或有自动标题的会话；空的时间戳会话不列出
-    const valid = feishu.filter((h) => {
-      const name = h.id.slice('feishu-'.length);
-      return /^[a-z]/.test(name) || name === cur || !!titles[h.id];
+    // 有效会话：有标题、飞书命名会话、或当前会话；其余空会话不列出
+    const valid = all.filter((h) => {
+      const isFeishu = h.id.indexOf('feishu-') === 0;
+      const name = isFeishu ? h.id.slice('feishu-'.length) : h.id;
+      const isNamed = isFeishu && /^[a-z]/.test(name);
+      const isCurrent = isFeishu && name === cur;
+      return !!titles[h.id] || isNamed || isCurrent;
     });
     if (!valid.length) return '（暂无有效会话）';
     const lines = valid.map((h) => {
-      const name = h.id.slice('feishu-'.length);
-      const star = (name === cur) ? '* ' : '';
-      const title = titles[h.id] ? ' - ' + titles[h.id] : '';
+      const isFeishu = h.id.indexOf('feishu-') === 0;
+      const name = isFeishu ? h.id.slice('feishu-'.length) : h.id;
+      const star = (isFeishu && name === cur) ? '* ' : '';
+      const title = titles[h.id];
       const cwd = h.cwd ? '  (' + h.cwd + ')' : '';
-      return star + name + title + cwd;
+      const label = isFeishu ? (name + (title ? ' - ' + title : '')) : (title || name);
+      return star + label + cwd;
     });
     return '可用会话（* 为当前）：\n' + lines.join('\n');
   }
