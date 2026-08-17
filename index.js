@@ -474,8 +474,10 @@ export async function apply(ctx, config) {
     if (wr && wr.archivedSessionIds) {
       try { for (const id of wr.archivedSessionIds) archivedSet.add(id); } catch (e) {}
     }
-    // 排除已归档与子代理会话
-    const all = headers.filter((h) => h && h.id && !archivedSet.has(h.id) && h.origin !== 'subagent');
+    // 手动隐藏的会话不列出（config.json 的 hiddenSessions）
+    const hiddenSet = new Set(Array.isArray(conf && conf.hiddenSessions) ? conf.hiddenSessions : []);
+    // 排除已归档、隐藏与子代理会话
+    const all = headers.filter((h) => h && h.id && !archivedSet.has(h.id) && !hiddenSet.has(h.id) && h.origin !== 'subagent');
     if (!all.length) return '（暂无会话）';
     // 取自动生成的标题（同网页端）
     const titles = {};

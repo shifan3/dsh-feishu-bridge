@@ -4,5 +4,6 @@
   "presetId": null,
   "cwd": "/path/to/your/workspace",
   "groupReplyOnlyWhenMentioned": true,
-  "maxReplyChars": 4000
+  "maxReplyChars": 4000,
+  "hiddenSessions": []
 }
